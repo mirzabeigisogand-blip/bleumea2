@@ -3,13 +3,6 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   output: "standalone",
   reactStrictMode: false,
-  // جلوگیری از خطای build در محیط production
-  typescript: {
-    ignoreBuildErrors: false,
-  },
-  eslint: {
-    ignoreDuringBuilds: false,
-  },
   // بهینه‌سازی تصاویر
   images: {
     formats: ["image/avif", "image/webp"],
