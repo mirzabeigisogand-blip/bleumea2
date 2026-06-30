@@ -1,18 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
 import { translatePoetically } from "@/lib/bleumea/translator";
 
-// POST /api/bleumea/translate — translate raw text into poetic Persian
+// POST /api/bleumea/translate — ترجمه شعری فارسی
+// تنظیمات (apiKey, baseURL, model) رو از بدنه درخواست می‌خونه
 export async function POST(req: NextRequest) {
-  const body = await req.json().catch(() => ({}));
-  const text: string = body.text || "";
-  const sourceLanguage: string = body.sourceLanguage || "en";
-  const title: string | undefined = body.title;
-  const author: string | undefined = body.author;
+  try {
+    const body = await req.json().catch(() => ({}));
+    const text: string = body.text || "";
+    const sourceLanguage: string = body.sourceLanguage || "en";
+    const title: string | undefined = body.title;
+    const author: string | undefined = body.author;
 
-  if (!text.trim()) {
-    return NextResponse.json({ error: "text required" }, { status: 400 });
+    // تنظیمات از کلاینت (از localStorage میاد)
+    const options = {
+      apiKey: body.apiKey,
+      baseURL: body.baseURL,
+      model: body.model,
+    };
+
+    if (!text.trim()) {
+      return NextResponse.json({ error: "text required" }, { status: 400 });
+    }
+
+    const result = await translatePoetically(text, sourceLanguage, title, author, options);
+    return NextResponse.json({ result });
+  } catch (err) {
+    return NextResponse.json({
+      error: err instanceof Error ? err.message : String(err),
+    }, { status: 500 });
   }
-
-  const result = await translatePoetically(text, sourceLanguage, title, author);
-  return NextResponse.json({ result });
 }
