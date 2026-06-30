@@ -50,6 +50,7 @@ export function SettingsPanel() {
     message?: string;
     reply?: string;
     error?: string;
+    detail?: string;
     durationMs?: number;
   } | null>(null);
 
