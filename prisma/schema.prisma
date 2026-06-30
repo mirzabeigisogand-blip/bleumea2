@@ -1,0 +1,244 @@
+// BLEUMEA — Global AI Lyrics & Poetry Intelligence Platform
+// Production-grade Prisma schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CORE CONTENT MODEL
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Poem {
+  id                    String   @id @default(cuid())
+  title                 String
+  author                String
+  language              String
+  country               String?
+  genre                 String?
+  mood                  String?
+  theme                 String?
+
+  // License metadata — CRITICAL: never store full text if license is unknown
+  licenseType           String   @default("UNKNOWN") // PUBLIC_DOMAIN | CC0 | CC_BY | CC_BY_SA | CC_BY_NC | CC_BY_ND | RESTRICTED | UNKNOWN
+  licenseConfidence     Float    @default(0) // 0..1
+  legalityScore         String   @default("BLOCKED") // SAFE | LIMITED | BLOCKED
+  sourceUrl             String?
+  originalText          String?  // nullable — only stored when legalityScore = SAFE
+  persianTranslation    String
+
+  // Quality metrics
+  poetryConfidence      Float    @default(0) // 0..1
+  translationQuality    Float    @default(0) // 0..1
+  duplicateScore        Float    @default(0) // 0..1 (1 = exact duplicate)
+  qualityScore          Float    @default(0) // aggregated 0..1
+
+  // Semantic vector (base64 of Float32Array, dim=384 placeholder)
+  embeddingVector       String?
+  similarityIndex       Float?
+
+  // Pipeline tracking
+  pipelineRunId         String?
+  pipelineRun           PipelineRun? @relation(fields: [pipelineRunId], references: [id])
+  pipelineStages        StageResult[]
+  status                String   @default("APPROVED") // APPROVED | QUARANTINE | REJECTED
+
+  // Versioning
+  version               Int      @default(1)
+  versionHistory        String   @default("[]") // JSON string
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // ردیابی کشف خودکار
+  discoveredAt          DateTime?  // اگر توسط رادار کشف شده باشه
+  isSaved               Boolean  @default(true)  // در کتابخانه ذخیره شده
+
+  sourceId              String?
+  source                Source?  @relation(fields: [sourceId], references: [id])
+
+  @@index([language])
+  @@index([licenseType])
+  @@index([legalityScore])
+  @@index([author])
+  @@index([createdAt])
+  @@index([discoveredAt])
+  @@index([isSaved])
+}
+
+model StageResult {
+  id              String   @id @default(cuid())
+  poemId          String
+  poem            Poem     @relation(fields: [poemId], references: [id], onDelete: Cascade)
+  stageName       String   // CRAWLER | PREFILTER | LANG_DETECT | POETRY_CLASSIFIER | LICENSE_CHECKER | DEDUP | TRANSLATION | EMBEDDING | STORAGE
+  status          String   // SUCCESS | FAILED | SKIPPED | RETRY
+  confidence      Float?
+  durationMs      Int?
+  message         String?
+  metadata        String?  // JSON string
+  createdAt       DateTime @default(now())
+
+  @@index([poemId])
+  @@index([stageName])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SOURCE DISCOVERY & LICENSE INTELLIGENCE
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Source {
+  id                  String   @id @default(cuid())
+  name                String
+  url                 String   @unique
+  type                String   // SEARCH_ENGINE | RSS | ARCHIVE | UNIVERSITY | PUBLIC_DOMAIN | CC_REPO | OFFICIAL_ARTIST | UNKNOWN
+  region              String?  // ISO 3166-1 alpha-2
+  language            String?
+  description         String?
+
+  // License intelligence
+  termsUrl            String?
+  licenseType         String   @default("UNKNOWN")
+  legalityScore       String   @default("BLOCKED") // SAFE | LIMITED | BLOCKED
+  licenseConfidence   Float    @default(0)
+  copyrightPolicy     String?  // summary text
+  lastLicenseScan     DateTime?
+  licenseScanCount    Int      @default(0)
+
+  // Health
+  status              String   @default("ACTIVE") // ACTIVE | PAUSED | BANNED | ERROR
+  healthScore         Float    @default(1) // 0..1
+  lastCrawlAt         DateTime?
+  crawlCount          Int      @default(0)
+  itemsIngested       Int      @default(0)
+  itemsRejected       Int      @default(0)
+  errorRate           Float    @default(0)
+
+  // Fingerprint
+  fingerprintHash     String?  // hash of ToS text — detects changes
+  lastHealthCheck     DateTime?
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  poems               Poem[]
+
+  @@index([status])
+  @@index([legalityScore])
+  @@index([type])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PIPELINE OPERATIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model PipelineRun {
+  id                String   @id @default(cuid())
+  status            String   @default("RUNNING") // RUNNING | SUCCESS | FAILED | DEGRADED
+  trigger           String   @default("MANUAL") // MANUAL | SCHEDULED | BACKFILL | RETRY
+  inputCount        Int      @default(0)
+  outputCount       Int      @default(0)
+  rejectedCount     Int      @default(0)
+  quarantineCount   Int      @default(0)
+
+  stageStats        String   @default("{}") // JSON: { stage: { success, failed, skipped, avgMs } }
+  degradedApis      String   @default("[]") // JSON list of failed API names
+  fallbacksUsed     String   @default("[]") // JSON list of fallback models used
+
+  startedAt         DateTime @default(now())
+  finishedAt        DateTime?
+  durationMs        Int?
+
+  poems             Poem[]
+
+  @@index([status])
+  @@index([startedAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OBSERVABILITY & SELF-HEALING
+// ─────────────────────────────────────────────────────────────────────────────
+
+model SystemLog {
+  id          String   @id @default(cuid())
+  level       String   // DEBUG | INFO | WARN | ERROR | CRITICAL
+  category    String   // PIPELINE | LICENSE | SECURITY | API | DB | TRANSLATION | EMBEDDING | QA | SYSTEM
+  message     String
+  detail      String?  // JSON or text
+  traceId     String?
+  sourceId    String?
+  poemId      String?
+  autoRecovered Boolean @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([level])
+  @@index([category])
+  @@index([createdAt])
+}
+
+model AnalyticsEvent {
+  id          String   @id @default(cuid())
+  eventType   String   // INGEST | REJECT | TRANSLATE | EMBED | SEARCH | ERROR | RECOVER
+  entity      String?  // poem id, source id, etc.
+  value       Float?
+  unit        String?
+  meta        String?  // JSON
+  createdAt   DateTime @default(now())
+
+  @@index([eventType])
+  @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SELF-DEBUGGING & QA
+// ─────────────────────────────────────────────────────────────────────────────
+
+model QAResult {
+  id          String   @id @default(cuid())
+  testSuite   String   // UNIT | INTEGRATION | PIPELINE_SIM | REGRESSION
+  testName    String
+  status      String   // PASSED | FAILED | SKIPPED
+  durationMs  Int?
+  message     String?
+  autoFix     Boolean  @default(false)
+  fixCommit   String?
+  createdAt   DateTime @default(now())
+
+  @@index([testSuite])
+  @@index([status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECURITY & AUDIT
+// ─────────────────────────────────────────────────────────────────────────────
+
+model AuditEvent {
+  id          String   @id @default(cuid())
+  actor       String   // user id / system agent
+  action      String   // READ | WRITE | DELETE | LOGIN | API_CALL | CONFIG_CHANGE
+  resource    String?
+  ipHash      String?  // never store raw IP
+  riskScore   Float    @default(0) // 0..1
+  allowed     Boolean  @default(true)
+  meta        String?  // JSON
+  createdAt   DateTime @default(now())
+
+  @@index([actor])
+  @@index([action])
+  @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// APP SETTINGS — تنظیمات قابل ویرایش از طریق رابط کاربری
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Setting {
+  id          String   @id
+  value       String
+  updatedAt   DateTime @updatedAt
+}
+

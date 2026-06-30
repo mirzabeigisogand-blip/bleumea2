@@ -1,0 +1,47 @@
+{
+  "name": "بلومیا — کتابخانهٔ شعر و ترانه",
+  "short_name": "بلومیا",
+  "description": "کتابخانهٔ هوشمند شعر و ترانه‌های جهانی با ترجمهٔ شعری فارسی",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#064e3b",
+  "theme_color": "#10b981",
+  "orientation": "portrait",
+  "dir": "rtl",
+  "lang": "fa-IR",
+  "categories": ["books", "education", "lifestyle"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "کتابخانه",
+      "short_name": "کتابخانه",
+      "url": "/?tab=library",
+      "description": "مشاهدهٔ همهٔ اشعار"
+    },
+    {
+      "name": "جستجوی خودکار",
+      "short_name": "جستجو",
+      "url": "/?tab=auto",
+      "description": "کشف خودکار شعر هر ۳۰ ثانیه"
+    },
+    {
+      "name": "مترجم",
+      "short_name": "مترجم",
+      "url": "/?tab=translator",
+      "description": "ترجمهٔ شعری فارسی"
+    },
+    {
+      "name": "تنظیمات",
+      "short_name": "تنظیمات",
+      "url": "/?tab=settings",
+      "description": "تنظیمات API و اتصال"
+    }
+  ]
+}
