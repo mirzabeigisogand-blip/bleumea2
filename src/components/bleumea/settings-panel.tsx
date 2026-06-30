@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,38 +13,104 @@ import {
   Sparkles, Save, TestTube, Eye, EyeOff,
 } from "lucide-react";
 
-interface Providers {
-  [key: string]: {
-    label: string;
-    baseURL: string;
-    models: string[];
-    signupUrl: string;
-    free: boolean;
+const STORAGE_KEY = "bleumea-settings";
+
+const PROVIDERS = {
+  glm: {
+    label: "GLM (智谱) — پیش‌فرض",
+    baseURL: "https://open.bigmodel.cn/api/paas/v4",
+    models: ["glm-4.6", "glm-4-plus", "glm-4-flash", "glm-4"],
+    signupUrl: "https://open.bigmodel.cn/usercenter/apikeys",
+    free: false,
+  },
+  groq: {
+    label: "Groq (رایگان و سریع)",
+    baseURL: "https://api.groq.com/openai/v1",
+    models: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"],
+    signupUrl: "https://console.groq.com/keys",
+    free: true,
+  },
+  openai: {
+    label: "OpenAI",
+    baseURL: "https://api.openai.com/v1",
+    models: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
+    signupUrl: "https://platform.openai.com/api-keys",
+    free: false,
+  },
+  openrouter: {
+    label: "OpenRouter",
+    baseURL: "https://openrouter.ai/api/v1",
+    models: ["anthropic/claude-3.5-sonnet", "openai/gpt-4o", "google/gemini-flash-1.5"],
+    signupUrl: "https://openrouter.ai/keys",
+    free: false,
+  },
+  together: {
+    label: "Together AI",
+    baseURL: "https://api.together.xyz/v1",
+    models: ["meta-llama/Llama-3.3-70B-Instruct-Turbo", "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo"],
+    signupUrl: "https://api.together.xyz/settings/api-keys",
+    free: false,
+  },
+  ollama: {
+    label: "Ollama (محلی — رایگان)",
+    baseURL: "http://localhost:11434/v1",
+    models: ["llama3.1:8b", "llama3.1:70b", "qwen2.5:7b", "mistral:7b"],
+    signupUrl: "https://ollama.com/download",
+    free: true,
+  },
+};
+
+interface SavedSettings {
+  LLM_PROVIDER: string;
+  LLM_BASE_URL: string;
+  LLM_MODEL: string;
+  LLM_API_KEY: string;
+}
+
+function loadSettings(): SavedSettings {
+  if (typeof window === "undefined") {
+    return {
+      LLM_PROVIDER: "glm",
+      LLM_BASE_URL: PROVIDERS.glm.baseURL,
+      LLM_MODEL: PROVIDERS.glm.models[0],
+      LLM_API_KEY: "",
+    };
+  }
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        LLM_PROVIDER: parsed.LLM_PROVIDER || "glm",
+        LLM_BASE_URL: parsed.LLM_BASE_URL || PROVIDERS.glm.baseURL,
+        LLM_MODEL: parsed.LLM_MODEL || PROVIDERS.glm.models[0],
+        LLM_API_KEY: parsed.LLM_API_KEY || "",
+      };
+    }
+  } catch {}
+  return {
+    LLM_PROVIDER: "glm",
+    LLM_BASE_URL: PROVIDERS.glm.baseURL,
+    LLM_MODEL: PROVIDERS.glm.models[0],
+    LLM_API_KEY: "",
   };
 }
 
-interface SettingsData {
-  settings: {
-    LLM_PROVIDER: string;
-    LLM_BASE_URL: string;
-    LLM_MODEL: string;
-    LLM_API_KEY_MASKED: string;
-    LLM_API_KEY_SET: boolean;
-  };
-  providers: Providers;
+function saveSettings(s: SavedSettings) {
+  if (typeof window !== "undefined") {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+  }
 }
 
 export function SettingsPanel() {
-  const [data, setData] = useState<SettingsData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [initial] = useState(loadSettings);
+  const [provider, setProvider] = useState(initial.LLM_PROVIDER);
+  const [baseURL, setBaseURL] = useState(initial.LLM_BASE_URL);
+  const [model, setModel] = useState(initial.LLM_MODEL);
+  const [apiKey, setApiKey] = useState(initial.LLM_API_KEY);
+  const [showKey, setShowKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [showKey, setShowKey] = useState(false);
-
-  const [provider, setProvider] = useState("glm");
-  const [baseURL, setBaseURL] = useState("");
-  const [model, setModel] = useState("");
-  const [apiKey, setApiKey] = useState("");
   const [testResult, setTestResult] = useState<{
     success: boolean;
     message?: string;
@@ -54,62 +120,22 @@ export function SettingsPanel() {
     durationMs?: number;
   } | null>(null);
 
-  useEffect(() => {
-    load();
-  }, []);
-
-  async function load() {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/bleumea/settings");
-      const d = await res.json();
-      setData(d);
-      setProvider(d.settings.LLM_PROVIDER);
-      setBaseURL(d.settings.LLM_BASE_URL);
-      setModel(d.settings.LLM_MODEL);
-      setApiKey(d.settings.LLM_API_KEY_MASKED);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // وقتی provider عوض شد، تنظیمات پیش‌فرض اون رو بذار
   function selectProvider(p: string) {
-    if (!data) return;
-    const prov = data.providers[p];
+    const prov = (PROVIDERS as any)[p];
     if (!prov) return;
     setProvider(p);
     setBaseURL(prov.baseURL);
     setModel(prov.models[0]);
-    setApiKey(""); // وقتی provider عوض شد، کلید قبلی رو پاک کن
     setTestResult(null);
   }
 
-  async function save() {
+  function save() {
     setSaving(true);
-    try {
-      const res = await fetch("/api/bleumea/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          LLM_PROVIDER: provider,
-          LLM_BASE_URL: baseURL,
-          LLM_MODEL: model,
-          LLM_API_KEY: apiKey,
-        }),
-      });
-      const d = await res.json();
-      if (d.success) {
-        toast.success(d.message || "تنظیمات ذخیره شد");
-        await load();
-      } else {
-        toast.error(d.error || "ذخیره ناموفق بود");
-      }
-    } catch {
-      toast.error("ذخیره ناموفق بود");
-    } finally {
+    saveSettings({ LLM_PROVIDER: provider, LLM_BASE_URL: baseURL, LLM_MODEL: model, LLM_API_KEY: apiKey });
+    setTimeout(() => {
       setSaving(false);
-    }
+      toast.success("تنظیمات ذخیره شد");
+    }, 300);
   }
 
   async function testConnection() {
@@ -141,12 +167,8 @@ export function SettingsPanel() {
     }
   }
 
-  if (loading || !data) {
-    return <div className="p-6 text-muted-foreground flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> در حال بارگذاری تنظیمات…</div>;
-  }
-
-  const currentProvider = data.providers[provider];
-  const apiKeySet = data.settings.LLM_API_KEY_SET;
+  const currentProvider = (PROVIDERS as any)[provider];
+  const apiKeySet = !!apiKey && apiKey.length > 0;
 
   return (
     <div className="space-y-4 max-w-3xl mx-auto" dir="rtl">
@@ -164,12 +186,12 @@ export function SettingsPanel() {
                 </div>
                 <div className="text-xs text-muted-foreground">
                   {apiKeySet
-                    ? `ارائه‌دهنده: ${currentProvider?.label} · مدل: ${data.settings.LLM_MODEL}`
+                    ? `ارائه‌دهنده: ${currentProvider?.label} · مدل: ${model}`
                     : "برای فعال‌سازی ترجمه، کلید API را وارد کنید"}
                 </div>
               </div>
             </div>
-            <Button onClick={testConnection} disabled={testing || !apiKey || apiKey.includes("••••") && !apiKeySet} size="sm">
+            <Button onClick={testConnection} disabled={testing || !apiKey} size="sm">
               {testing
                 ? <><Loader2 className="h-3 w-3 animate-spin" /> در حال تست</>
                 : <><TestTube className="h-3 w-3" /> تست اتصال</>
@@ -213,7 +235,7 @@ export function SettingsPanel() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-            {Object.entries(data.providers).map(([key, p]) => (
+            {Object.entries(PROVIDERS).map(([key, p]) => (
               <button
                 key={key}
                 onClick={() => selectProvider(key)}
@@ -280,7 +302,7 @@ export function SettingsPanel() {
               dir="ltr"
             />
             <p className="text-[10px] text-muted-foreground mt-1">
-              کلید به‌صورت امن در دیتابیس ذخیره می‌شود و هرگز به بیرون ارسال نمی‌شود.
+              کلید فقط در مرورگر شما ذخیره می‌شود (localStorage) — امن است.
             </p>
           </div>
 
@@ -314,7 +336,7 @@ export function SettingsPanel() {
                   className="px-2 rounded-md border bg-background text-xs font-mono"
                   dir="ltr"
                 >
-                  {currentProvider.models.map((m) => (
+                  {currentProvider.models.map((m: string) => (
                     <option key={m} value={m}>{m}</option>
                   ))}
                 </select>
