@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Sparkles, Languages, ArrowLeft } from "lucide-react";
+import { Loader2, Sparkles, Languages, ArrowLeft, Settings, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
+
+const STORAGE_KEY = "bleumea-settings";
 
 const SAMPLES = [
   {
@@ -38,6 +40,22 @@ Je partirai. Vois-tu, je sais que tu m'attends.`,
   },
 ];
 
+interface SavedSettings {
+  LLM_PROVIDER: string;
+  LLM_BASE_URL: string;
+  LLM_MODEL: string;
+  LLM_API_KEY: string;
+}
+
+function loadSettings(): SavedSettings | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return null;
+}
+
 export function TranslatorPanel() {
   const [text, setText] = useState("");
   const [result, setResult] = useState<{
@@ -47,26 +65,44 @@ export function TranslatorPanel() {
     fallbackUsed: boolean;
   } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [hasSettings, setHasSettings] = useState(false);
+
+  useEffect(() => {
+    setHasSettings(!!loadSettings()?.LLM_API_KEY);
+  }, []);
 
   async function translate() {
     if (!text.trim()) {
       toast.error("متن را وارد کنید");
       return;
     }
+
+    const settings = loadSettings();
+    if (!settings?.LLM_API_KEY) {
+      toast.error("ابتدا به تب «تنظیمات» بروید و کلید API را وارد کنید");
+      return;
+    }
+
     setLoading(true);
     setResult(null);
     try {
       const res = await fetch("/api/bleumea/translate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, sourceLanguage: "auto" }),
+        body: JSON.stringify({
+          text,
+          sourceLanguage: "auto",
+          apiKey: settings.LLM_API_KEY,
+          baseURL: settings.LLM_BASE_URL,
+          model: settings.LLM_MODEL,
+        }),
       });
       const d = await res.json();
       if (d.result) {
         setResult(d.result);
         toast.success("ترجمه کامل شد");
       } else {
-        toast.error("ترجمه ناموفق بود");
+        toast.error(d.error || "ترجمه ناموفق بود");
       }
     } catch {
       toast.error("ترجمه ناموفق بود");
@@ -77,6 +113,26 @@ export function TranslatorPanel() {
 
   return (
     <div className="space-y-4">
+      {/* هشدار اگه تنظیمات نیست */}
+      {!hasSettings && (
+        <Card className="border-amber-300 bg-amber-50">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <div className="font-semibold text-amber-900 text-sm">
+                  کلید API تنظیم نشده
+                </div>
+                <div className="text-xs text-amber-900/80 mt-1">
+                  برای ترجمه، ابتدا به تب «تنظیمات» بروید و کلید API خود را وارد کنید.
+                </div>
+              </div>
+              <Settings className="h-4 w-4 text-amber-600" />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* نمونه‌های آماده */}
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-xs text-muted-foreground">نمونه:</span>
@@ -105,7 +161,7 @@ export function TranslatorPanel() {
               </div>
               <Button
                 onClick={translate}
-                disabled={loading || !text.trim()}
+                disabled={loading || !text.trim() || !hasSettings}
                 size="sm"
               >
                 {loading
