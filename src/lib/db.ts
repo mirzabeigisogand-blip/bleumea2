@@ -1,20 +1,18 @@
 import { PrismaClient } from '@prisma/client'
 import { PrismaLibSql } from '@prisma/adapter-libsql'
-import { createClient } from '@libsql/client'
 
 // ساخت اتصال به دیتابیس
 // - در محیط توسعه: SQLite محلی (file:./db/custom.db)
-// - در محیط production (Vercel): Turso (libsql://...) — رایگان و دائمی
+// - در محیط production (Netlify/Vercel): Turso (libsql://...) — رایگان و دائمی
 function createPrismaClient() {
   const databaseUrl = process.env.DATABASE_URL || 'file:./db/custom.db'
 
   // اگه Turso (libsql://) بود، از adapter استفاده کن
   if (databaseUrl.startsWith('libsql://') || databaseUrl.startsWith('https://')) {
-    const libsql = createClient({
+    const adapter = new PrismaLibSql({
       url: databaseUrl,
       authToken: process.env.DATABASE_AUTH_TOKEN || '',
     })
-    const adapter = new PrismaLibSql(libsql)
     return new PrismaClient({ adapter })
   }
 
