@@ -1,24 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSettings } from "../settings/route";
 
-// POST /api/bleumea/test-api — تست اتصال به API با یه پیام ساده
+// POST /api/bleumea/test-api — تست اتصال به API
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
-    // اگه تنظیمات تستی ارسال شده باشه، از اونا استفاده کن؛ وگرنه از تنظیمات ذخیره‌شده
-    const saved = await getSettings();
 
-    const apiKey = body.LLM_API_KEY && !body.LLM_API_KEY.includes("••••")
-      ? body.LLM_API_KEY
-      : saved.LLM_API_KEY;
-    const baseURL = body.LLM_BASE_URL || saved.LLM_BASE_URL;
-    const model = body.LLM_MODEL || saved.LLM_MODEL;
+    const apiKey = body.LLM_API_KEY;
+    const baseURL = body.LLM_BASE_URL || "https://open.bigmodel.cn/api/paas/v4";
+    const model = body.LLM_MODEL || "glm-4.6";
 
     if (!apiKey) {
       return NextResponse.json({
         success: false,
-        error: "کلید API تنظیم نشده. ابتدا یک کلید API وارد کنید.",
-      }, { status: 400 });
+        error: "کلید API وارد نشده",
+      }, { status: 200 });
     }
 
     const startedAt = Date.now();
@@ -46,16 +41,16 @@ export async function POST(req: NextRequest) {
       const errText = await response.text().catch(() => "");
       let errorMessage = `HTTP ${response.status}`;
       if (response.status === 401) errorMessage = "کلید API نامعتبر است (۴۰۱)";
-      else if (response.status === 403) errorMessage = "دسترسی ممنوع (۴۰۳) — شما اجازه دسترسی ندارید";
+      else if (response.status === 403) errorMessage = "دسترسی ممنوع (۴۰۳)";
       else if (response.status === 404) errorMessage = "آدرس یا مدل اشتباه است (۴۰۴)";
-      else if (response.status === 429) errorMessage = "محدودیت نرخ (۴۲۹) — بعداً دوباره امتحان کنید";
+      else if (response.status === 429) errorMessage = "محدودیت نرخ (۴۲۹)";
       else if (response.status >= 500) errorMessage = `خطای سرور (${response.status})`;
       return NextResponse.json({
         success: false,
         error: errorMessage,
         detail: errText.slice(0, 300),
         durationMs,
-      }, { status: 200 }); // 200 برمی‌گردونیم تا فرانت‌اند بتونه خطا رو نمایش بده
+      }, { status: 200 });
     }
 
     const data = await response.json();
