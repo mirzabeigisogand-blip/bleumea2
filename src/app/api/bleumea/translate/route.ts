@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { translatePoetically } from "@/lib/bleumea/translator";
 
-// POST /api/bleumea/translate — ترجمه شعری فارسی
-// تنظیمات (apiKey, baseURL, model) رو از بدنه درخواست می‌خونه
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
@@ -11,7 +9,6 @@ export async function POST(req: NextRequest) {
     const title: string | undefined = body.title;
     const author: string | undefined = body.author;
 
-    // تنظیمات از کلاینت (از localStorage میاد)
     const options = {
       apiKey: body.apiKey,
       baseURL: body.baseURL,
