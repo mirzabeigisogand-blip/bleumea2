@@ -1,78 +1,60 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { STATIC_POEMS } from "@/lib/bleumea/static-poems";
 
-// GET /api/bleumea/poems — paginated dataset explorer
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
-  const page = parseInt(params.get("page") || "1");
   const pageSize = Math.min(parseInt(params.get("pageSize") || "20"), 100);
-  const language = params.get("language");
-  const licenseType = params.get("licenseType");
-  const legalityScore = params.get("legalityScore");
-  const status = params.get("status");
-  const author = params.get("author");
-  const q = params.get("q");
+  const q = params.get("q")?.toLowerCase() || "";
 
-  const where: any = {};
-  if (language) where.language = language;
-  if (licenseType) where.licenseType = licenseType;
-  if (legalityScore) where.legalityScore = legalityScore;
-  if (status) where.status = status;
-  if (author) where.author = { contains: author };
-  if (q) {
-    where.OR = [
-      { title: { contains: q } },
-      { author: { contains: q } },
-      { persianTranslation: { contains: q } },
-    ];
-  }
+  let dbPoems: any[] = [];
 
-  const sort = params.get("sort") || "newest"; // newest | discovered | quality
-  const orderBy: any =
-    sort === "discovered"
-      ? [{ discoveredAt: "desc" }, { createdAt: "desc" }]
-      : sort === "quality"
-        ? { qualityScore: "desc" }
-        : { createdAt: "desc" };
-
-  const [items, total] = await Promise.all([
-    db.poem.findMany({
+  try {
+    const where: any = {};
+    if (q) {
+      where.OR = [
+        { title: { contains: q } },
+        { author: { contains: q } },
+        { persianTranslation: { contains: q } },
+      ];
+    }
+    dbPoems = await db.poem.findMany({
       where,
-      orderBy,
-      skip: (page - 1) * pageSize,
+      orderBy: { createdAt: "desc" },
       take: pageSize,
       include: { source: { select: { name: true, url: true } } },
-    }),
-    db.poem.count({ where }),
-  ]);
+    });
+    dbPoems = dbPoems.map((p) => ({
+      id: p.id, title: p.title, author: p.author, language: p.language,
+      country: p.country, licenseType: p.licenseType, legalityScore: p.legalityScore,
+      sourceUrl: p.sourceUrl, originalText: p.originalText,
+      persianTranslation: p.persianTranslation, qualityScore: p.qualityScore,
+      createdAt: p.createdAt, discoveredAt: p.discoveredAt, isSaved: p.isSaved,
+      source: p.source,
+    }));
+  } catch {
+    dbPoems = [];
+  }
+
+  let staticPoems = STATIC_POEMS.map((p) => ({
+    ...p,
+    source: { name: p.sourceName, url: p.sourceUrl },
+    discoveredAt: null, isSaved: true, createdAt: new Date().toISOString(),
+  }));
+
+  if (q) {
+    staticPoems = staticPoems.filter((p) =>
+      p.title.toLowerCase().includes(q) ||
+      p.author.toLowerCase().includes(q) ||
+      p.persianTranslation.toLowerCase().includes(q)
+    );
+  }
+
+  const allItems = [...dbPoems, ...staticPoems].slice(0, pageSize);
+  const total = dbPoems.length + staticPoems.length;
 
   return NextResponse.json({
-    items: items.map((p) => ({
-      id: p.id,
-      title: p.title,
-      author: p.author,
-      language: p.language,
-      country: p.country,
-      genre: p.genre,
-      mood: p.mood,
-      theme: p.theme,
-      licenseType: p.licenseType,
-      licenseConfidence: p.licenseConfidence,
-      legalityScore: p.legalityScore,
-      sourceUrl: p.sourceUrl,
-      originalText: p.originalText,
-      persianTranslation: p.persianTranslation,
-      poetryConfidence: p.poetryConfidence,
-      translationQuality: p.translationQuality,
-      duplicateScore: p.duplicateScore,
-      qualityScore: p.qualityScore,
-      status: p.status,
-      version: p.version,
-      createdAt: p.createdAt,
-      discoveredAt: p.discoveredAt,
-      isSaved: p.isSaved,
-      source: p.source,
-    })),
-    pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) },
+    items: allItems,
+    pagination: { page: 1, pageSize, total, totalPages: 1 },
   });
 }
